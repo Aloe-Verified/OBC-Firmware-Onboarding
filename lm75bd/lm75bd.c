@@ -27,7 +27,27 @@ error_code_t lm75bdInit(lm75bd_config_t *config) {
 
 error_code_t readTempLM75BD(uint8_t devAddr, float *temp) {
   /* Implement this driver function */
+  uint8_t buffer[1];
+  buffer[0] = 0x00;
+  error_code_t error = i2cSendTo(devAddr, buffer, 1);
+    if (error != ERR_CODE_SUCCESS) {
+        return error;
+    } 
   
+  uint8_t temperatureData[2];
+  error = i2cReceiveFrom(devAddr, buffer, 2);
+    if (error != ERR_CODE_SUCCESS) {
+      return error;
+    }
+  //discard first reading because incorrect?
+  error = i2cReceiveFrom(devAddr, buffer, 2);
+    if (error != ERR_CODE_SUCCESS) {
+      return error;
+    }
+  uint8_t MSB = temperatureData[0];
+  uint8_t LSB = temperatureData[1];
+  int16_t bit_temperature = ((MSB << 8) | LSB) >> 5;
+  *temp = bit_temperature * 0.125;
   return ERR_CODE_SUCCESS;
 }
 
