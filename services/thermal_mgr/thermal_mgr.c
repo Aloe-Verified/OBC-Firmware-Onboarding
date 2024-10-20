@@ -41,6 +41,7 @@ void initThermalSystemManager(lm75bd_config_t *config) {
 
 }
 
+#define ERR_CODE_FAIL 1
 error_code_t thermalMgrSendEvent(thermal_mgr_event_t *event) {
   /* Send an event to the thermal manager queue */
   if(xQueueSend(thermalMgrQueueHandle, event, portMAX_DELAY) == pdTRUE){
@@ -48,11 +49,13 @@ error_code_t thermalMgrSendEvent(thermal_mgr_event_t *event) {
   }
   return ERR_CODE_FAIL;
 }
-
+#define THERMAL_MGR_EVENT_OS_INTERRUPT 1
 void osHandlerLM75BD(void) {
   /* Implement this function */
-  float temp;  
-  
+  thermal_mgr_event_t event;
+  event.type = THERMAL_MGR_EVENT_OS_INTERRUPT;
+  thermalMgrSendEvent(&event);
+
 }
 
 static void thermalMgr(void *pvParameters) {
@@ -62,13 +65,24 @@ static void thermalMgr(void *pvParameters) {
   thermal_mgr_event_t event;
   float temp;
 
+
   while (1) {
     if(xQueueReceive(thermalMgrQueueHandle, &event, portMAX_DELAY) == pdTRUE) {
       if (event.type == THERMAL_MGR_EVENT_MEASURE_TEMP_CMD) {
-        if(readTemp(thermalSensorAddr, &temp) == ERR_CODE_SUCCESS){
+        if(readTempLM75BD(thermalSensorAddr, &temp) == ERR_CODE_SUCCESS){
           addTemperatureTelemetry(temp);
         }
       }
+      else if (event.type == THERMAL_MGR_EVENT_OS_INTERRUPT){
+        if(readTempLM75BD(thermalSensorAddr, &temp) == ERR_CODE_SUCCESS){
+          if(temp >= 80.0f){
+            overTemperatureDetected();
+          }
+          else if (temp < 75.0f){
+            safeOperatingConditions();
+          }
+        }
+      } 
     }
   }
 }

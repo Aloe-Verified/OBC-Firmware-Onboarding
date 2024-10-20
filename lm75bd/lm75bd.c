@@ -35,18 +35,17 @@ error_code_t readTempLM75BD(uint8_t devAddr, float *temp) {
     } 
   
   uint8_t temperatureData[2];
-  error = i2cReceiveFrom(devAddr, buffer, 2);
-    if (error != ERR_CODE_SUCCESS) {
-      return error;
-    }
-  //discard first reading because incorrect?
-  error = i2cReceiveFrom(devAddr, buffer, 2);
+
+  error = i2cReceiveFrom(devAddr, temperatureData, 2);
     if (error != ERR_CODE_SUCCESS) {
       return error;
     }
   uint8_t MSB = temperatureData[0];
   uint8_t LSB = temperatureData[1];
   int16_t bit_temperature = ((MSB << 8) | LSB) >> 5;
+  if (bit_temperature & (1 << 10)) { 
+    bit_temperature |= 0xF800;  
+  }
   *temp = bit_temperature * 0.125;
   return ERR_CODE_SUCCESS;
 }
