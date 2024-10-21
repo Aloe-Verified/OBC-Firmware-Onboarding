@@ -1,5 +1,6 @@
 #include "thermal_mgr.h"
 #include "errors.h"
+#include "logging.h"
 #include "lm75bd.h"
 #include "console.h"
 
@@ -41,15 +42,20 @@ void initThermalSystemManager(lm75bd_config_t *config) {
 
 }
 
-#define ERR_CODE_FAIL 1
 error_code_t thermalMgrSendEvent(thermal_mgr_event_t *event) {
   /* Send an event to the thermal manager queue */
+  if (event == NULL){
+    return ERR_CODE_INVALID_ARG;
+  }
+  if (thermalMgrQueueHandle == NULL) {
+    return ERR_CODE_INVALID_STATE;
+  }
   if(xQueueSend(thermalMgrQueueHandle, event, portMAX_DELAY) == pdTRUE){
     return ERR_CODE_SUCCESS;
   }
-  return ERR_CODE_FAIL;
+  return ERR_CODE_UNKNOWN;
 }
-#define THERMAL_MGR_EVENT_OS_INTERRUPT 1
+
 void osHandlerLM75BD(void) {
   /* Implement this function */
   thermal_mgr_event_t event;
@@ -63,29 +69,31 @@ static void thermalMgr(void *pvParameters) {
   lm75bd_config_t *config = (lm75bd_config_t *) pvParameters;
   uint8_t thermalSensorAddr = config->devAddr;
   thermal_mgr_event_t event;
-  float temp;
-
+  error_code_t errCode;
 
   while (1) {
     if(xQueueReceive(thermalMgrQueueHandle, &event, portMAX_DELAY) == pdTRUE) {
       if (event.type == THERMAL_MGR_EVENT_MEASURE_TEMP_CMD) {
-        if(readTempLM75BD(thermalSensorAddr, &temp) == ERR_CODE_SUCCESS){
-          addTemperatureTelemetry(temp);
-        }
+        float temp;
+        LOG_IF_ERROR_CODE(readTempLM75BD(thermalSensorAddr, &temp));
+        if(errCode == ERR_CODE_SUCCESS) addTemperatureTelemetry(temp);
       }
       else if (event.type == THERMAL_MGR_EVENT_OS_INTERRUPT){
-        if(readTempLM75BD(thermalSensorAddr, &temp) == ERR_CODE_SUCCESS){
-          if(temp >= 80.0f){
+        float temp;
+        LOG_IF_ERROR_CODE(readTempLM75BD(thermalSensorAddr, &temp));
+        if(errCode == ERR_CODE_SUCCESS){
+          if(temp >= LM75BD_DEFAULT_OT_THRESH){
             overTemperatureDetected();
           }
-          else if (temp < 75.0f){
+          else if (temp < LM75BD_DEFAULT_HYST_THRESH){
             safeOperatingConditions();
           }
-        }
-      } 
-    }
+        } 
+      }
+    } 
   }
 }
+
 
 void addTemperatureTelemetry(float tempC) {
   printConsole("Temperature telemetry: %f deg C\n", tempC);
